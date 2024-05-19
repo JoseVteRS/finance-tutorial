@@ -26,7 +26,8 @@ export const useEditAccount = (id?: string) => {
       toast.success("Account updated successfully")
       queryClient.invalidateQueries({ queryKey: ["account", { id }] })
       queryClient.invalidateQueries({ queryKey: ["accounts"] })
-      //TODO: Invalidate summary and transaction
+      queryClient.invalidateQueries({ queryKey: ["transactions"] })
+      queryClient.invalidateQueries({ queryKey: ["summary"] })
     },
     onError: () => {
       toast.error("Failed to updated account")

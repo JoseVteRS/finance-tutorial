@@ -23,7 +23,7 @@ export const NewCategoySheet = () => {
   const mutation = useCreateCategory()
 
   const onSubmit = (values: FormValues) => {
-    console.log(values)
+
     mutation.mutate(values, {
       onSuccess: () => {
         onClose()

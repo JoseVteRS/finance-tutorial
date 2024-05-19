@@ -1,10 +1,12 @@
 "use client"
 
+import { DataCharts } from "@/components/data-charts"
+import { DataGrid } from "@/components/data-grid"
 import { Button } from "@/components/ui/button"
 import { useGetAccounts } from "@/features/accounts/api/use-get-accounts"
 import { useNewAccount } from "@/features/accounts/hooks/use-new-account"
 
-export default function Home() {
+export default function DashboardPage() {
   const { data: accounts, isLoading } = useGetAccounts()
   const { onOpen } = useNewAccount()
 
@@ -13,12 +15,9 @@ export default function Home() {
   }
 
   return (
-    <main className="">
-      {accounts?.map((account) => (
-        <div key={account.id}>{account.name}</div>
-      ))}
-
-      <Button onClick={onOpen}>Add an account</Button>
-    </main>
+    <div className="max-w-screen-2xl mx-auto w-full pb-10 -mt-24">
+      <DataGrid />
+      <DataCharts />
+    </div>
   )
 }

@@ -1,17 +1,19 @@
-import { Hono } from "hono"
 import { z } from "zod"
+import { Hono } from "hono"
 import { parse, subDays } from "date-fns"
+import { createId } from "@paralleldrive/cuid2"
+import { zValidator } from "@hono/zod-validator"
+import { HTTPException } from "hono/http-exception"
+import { clerkMiddleware, getAuth } from "@hono/clerk-auth"
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm"
+
 import { db } from "@/db/drizzle"
 import {
   transactions,
   insertTransactionSchema,
-  categories,
   accounts,
+  categories,
 } from "@/db/schema"
-import { clerkMiddleware, getAuth } from "@hono/clerk-auth"
-import { zValidator } from "@hono/zod-validator"
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm"
-import { createId } from "@paralleldrive/cuid2"
 
 const app = new Hono()
   .get(
@@ -27,10 +29,13 @@ const app = new Hono()
     clerkMiddleware(),
     async (c) => {
       const auth = getAuth(c)
+
       const { from, to, accountId } = c.req.valid("query")
 
       if (!auth?.userId) {
-        return c.json({ error: "Unauthorized" }, 401)
+        throw new HTTPException(401, {
+          res: c.json({ error: "Unauthorized" }, 401),
+        })
       }
 
       const defaultTo = new Date()
@@ -39,7 +44,6 @@ const app = new Hono()
       const startDate = from
         ? parse(from, "yyyy-MM-dd", new Date())
         : defaultFrom
-
       const endDate = to ? parse(to, "yyyy-MM-dd", new Date()) : defaultTo
 
       const data = await db
@@ -72,18 +76,28 @@ const app = new Hono()
   )
   .get(
     "/:id",
+    zValidator(
+      "param",
+      z.object({
+        id: z.string().optional(),
+      })
+    ),
     clerkMiddleware(),
-    zValidator("param", z.object({ id: z.string() })),
     async (c) => {
       const auth = getAuth(c)
+
       const { id } = c.req.valid("param")
 
       if (!id) {
-        return c.json({ error: "Missing id" }, 400)
+        throw new HTTPException(400, {
+          res: c.json({ error: "Bad Request" }, 400),
+        })
       }
 
       if (!auth?.userId) {
-        return c.json({ error: "Unathorized" }, 401)
+        throw new HTTPException(401, {
+          res: c.json({ error: "Unauthorized" }, 401),
+        })
       }
 
       const [data] = await db
@@ -99,8 +113,11 @@ const app = new Hono()
         .from(transactions)
         .innerJoin(accounts, eq(transactions.accountId, accounts.id))
         .where(and(eq(transactions.id, id), eq(accounts.userId, auth.userId)))
+
       if (!data) {
-        return c.json({ error: "Not found" }, 404)
+        throw new HTTPException(404, {
+          res: c.json({ error: "Not Found" }, 404),
+        })
       }
 
       return c.json({ data })
@@ -120,10 +137,12 @@ const app = new Hono()
       const values = c.req.valid("json")
 
       if (!auth?.userId) {
-        return c.json({ error: "Unathorized" }, 401)
+        throw new HTTPException(401, {
+          res: c.json({ error: "Unauthorized" }, 401),
+        })
       }
 
-      const [data] = await db
+      const data = await db
         .insert(transactions)
         .values({
           id: createId(),
@@ -131,19 +150,28 @@ const app = new Hono()
         })
         .returning()
 
-      return c.json({ data }, 201)
+      return c.json({ data })
     }
   )
   .post(
     "/bulk-create",
     clerkMiddleware(),
-    zValidator("json", z.array(insertTransactionSchema.omit({ id: true }))),
+    zValidator(
+      "json",
+      z.array(
+        insertTransactionSchema.omit({
+          id: true,
+        })
+      )
+    ),
     async (c) => {
       const auth = getAuth(c)
       const values = c.req.valid("json")
 
       if (!auth?.userId) {
-        return c.json({ error: "Unathorized" }, 401)
+        throw new HTTPException(401, {
+          res: c.json({ error: "Unauthorized" }, 401),
+        })
       }
 
       const data = await db
@@ -171,8 +199,11 @@ const app = new Hono()
     async (c) => {
       const auth = getAuth(c)
       const values = c.req.valid("json")
+
       if (!auth?.userId) {
-        return c.json({ error: "Unauthorized" }, 401)
+        throw new HTTPException(401, {
+          res: c.json({ error: "Unauthorized" }, 401),
+        })
       }
 
       const transactionsToDelete = db.$with("transactions_to_delete").as(
@@ -197,7 +228,9 @@ const app = new Hono()
             sql`(select id from ${transactionsToDelete})`
           )
         )
-        .returning({ id: transactions.id })
+        .returning({
+          id: transactions.id,
+        })
 
       return c.json({ data })
     }
@@ -205,19 +238,33 @@ const app = new Hono()
   .patch(
     "/:id",
     clerkMiddleware(),
-    zValidator("param", z.object({ id: z.optional(z.string()) })),
-    zValidator("json", insertTransactionSchema.omit({ id: true })),
+    zValidator(
+      "param",
+      z.object({
+        id: z.string().optional(),
+      })
+    ),
+    zValidator(
+      "json",
+      insertTransactionSchema.omit({
+        id: true,
+      })
+    ),
     async (c) => {
       const auth = getAuth(c)
       const { id } = c.req.valid("param")
       const values = c.req.valid("json")
 
-      if (!id) {
-        return c.json({ error: "Missing id" }, 400)
+      if (!auth?.userId) {
+        throw new HTTPException(401, {
+          res: c.json({ error: "Unauthorized" }, 401),
+        })
       }
 
-      if (!auth?.userId) {
-        return c.json({ error: "Unathorized" }, 401)
+      if (!id) {
+        throw new HTTPException(400, {
+          res: c.json({ error: "Bad Request" }, 400),
+        })
       }
 
       const transactionsToUpdate = db.$with("transactions_to_update").as(
@@ -241,7 +288,9 @@ const app = new Hono()
         .returning()
 
       if (!data) {
-        return c.json({ error: "Not found transactions" }, 404)
+        throw new HTTPException(404, {
+          res: c.json({ error: "Not Found" }, 404),
+        })
       }
 
       return c.json({ data })
@@ -250,17 +299,26 @@ const app = new Hono()
   .delete(
     "/:id",
     clerkMiddleware(),
-    zValidator("param", z.object({ id: z.optional(z.string()) })),
+    zValidator(
+      "param",
+      z.object({
+        id: z.string().optional(),
+      })
+    ),
     async (c) => {
       const auth = getAuth(c)
       const { id } = c.req.valid("param")
 
-      if (!id) {
-        return c.json({ error: "Missing id" }, 400)
+      if (!auth?.userId) {
+        throw new HTTPException(401, {
+          res: c.json({ error: "Unauthorized" }, 401),
+        })
       }
 
-      if (!auth?.userId) {
-        return c.json({ error: "Unathorized" }, 401)
+      if (!id) {
+        throw new HTTPException(400, {
+          res: c.json({ error: "Bad Request" }, 400),
+        })
       }
 
       const transactionsToDelete = db.$with("transactions_to_delete").as(
@@ -280,13 +338,18 @@ const app = new Hono()
             sql`(select id from ${transactionsToDelete})`
           )
         )
-        .returning({ id: transactions.id })
+        .returning({
+          id: transactions.id,
+        })
 
       if (!data) {
-        return c.json({ error: "Not found account" }, 404)
+        throw new HTTPException(404, {
+          res: c.json({ error: "Not Found" }, 404),
+        })
       }
 
       return c.json({ data })
     }
   )
+
 export default app
